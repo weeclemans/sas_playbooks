@@ -1,0 +1,7 @@
+---
+hpae_path: /opt/hpae
+java_home: /usr/java/jdk1.8.0_121
+cdh_path: /opt/cloudera/parcels/CDH/lib/hadoop
+sas_depot_path: /sas/sas9.4/SAS_Software_Depot
+sas_user: sassrv
+sas_groupname: sas

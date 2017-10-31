@@ -1,0 +1,7 @@
+---
+sepcorehadp_file: sepcorehadp-13.00000-1.sh
+sasep_path: "{{ hpae_path }}/SASEPHome"
+sasep_admin_script: sasep-admin.sh
+sasep_conf_file: ep-config.xml
+sasep_conf_path_hdfs: /sas/ep/config
+sasep_conf_path: {{ sasep_path }}/conf"

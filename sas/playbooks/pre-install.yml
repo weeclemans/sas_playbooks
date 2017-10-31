@@ -1,0 +1,38 @@
+---
+- hosts: cloudera-cluster
+  max_fail_percentage: 0
+  any_errors_fatal: true
+  vars_files:
+    - ../vars/main.yml
+
+  tasks:
+    - name: add group sas
+      group: name={{ sas_group }} gid={{ sas_gid }} state=present
+
+    - name: add user {{ sasinst_user }}
+      user: name={{ sasinst_user }} group={{ sas_group }} password={{ sas_passwd }} state=present 
+
+    - name: add user {{ sassrv_user }} 
+      user: name={{ sassrv_user }} group={{ sas_group }} password={{ sas_passwd }} state=present
+
+    - name: Set authorized key for user {{ sasinst_user }} copying it from current user
+      authorized_key:
+        user: "{{ sasinst_user }}"
+        state: present
+        key: "{{ lookup('file', lookup('env','HOME') + '/.ssh/id_rsa.pub') }}"
+
+    - name: Set authorized key for user {{ sassrv_user }} copying it from current user
+      authorized_key:
+        user: "{{ sassrv_user }}"
+        state: present
+        key: "{{ lookup('file', lookup('env','HOME') + '/.ssh/id_rsa.pub') }}"
+
+    - name: copy sas limits conf
+      copy:
+        src: ../files/sas_limits.conf
+        dest: /etc/security/limits.d/sas_limits.conf
+        owner: root
+        group: root
+        mode: 644
+
+ 

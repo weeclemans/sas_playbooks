@@ -1,0 +1,80 @@
+---
+- hosts: cloudera-cluster
+  max_fail_percentage: 0
+  any_errors_fatal: true
+  vars_files:
+    - ../vars/main.yml
+    - ../vars/bda_sasep.yml
+  tasks:
+#    - name: check old instalation of BDA SAS EP (SASEPHome path)
+#      stat: path="{{ sasep_path }}"
+#      register: p
+#      failed_when: p.stat.exists == true
+
+    - name: remove old intallation of BDA SAS EP if exists
+      file:
+        path: "{{ sasep_path }}"
+        state: absent
+
+    - name: create hpae path on cluster nodes
+      file:
+        path: "{{ hpae_path }}"
+        state: directory
+        owner: "{{ sas_user }}"
+        group: "{{ sas_groupname }}"
+        mode: 0755
+
+
+- hosts: node1
+  max_fail_percentage: 0
+  any_errors_fatal: true
+  vars_files:
+    - ../vars/main.yml
+    - ../vars/bda_sasep.yml
+
+  tasks:
+    - name: check hadoop fs access
+      raw: hadoop fs -ls /
+      register: p
+      failed_when: p.rc != 0
+
+    - name: remove old configuration of BDA SAS EP ({{ sasep_conf_file }} on hdfs)
+      raw: hadoop fs -rm {{ sasep_conf_path_hdfs }}/{{ sasep_conf_file }} || true
+      #register: p
+      #failed_when: p.rc != 0
+
+    - name: upload {{ sepcorehadp_file }}
+      copy:
+        src: "../files/{{ sepcorehadp_file }}"
+        dest: "{{ hpae_path }}/{{ sepcorehadp_file }}"
+        owner: "{{ sas_user }}"
+        group: "{{ sas_groupname }}"
+        mode: 0755
+
+    - name: extract {{ sepcorehadp_file }}
+      become: true
+      become_user: "{{ sas_user }}"
+      command: "./{{ sepcorehadp_file }}"
+      args:
+        chdir: "{{ hpae_path }}"
+        creates: "{{ sasep_path }}/bin/{{ sasep_admin_script }}"
+
+
+    - name: copy files to remote nodes
+      command: ./{{ sasep_admin_script }} -add -hdfsuser root
+      args:
+        chdir: "{{ sasep_path }}/bin"
+      ignore_errors: no
+
+    - name: check installation {{ sepcorehadp_file }} BDA SAS EP
+      command: ./{{ sasep_admin_script }} -check -hdfsuser root
+      args:
+        chdir: "{{ sasep_path }}/bin"
+
+    - name: check config folder (hdfs) of BDA SAS EP
+      raw: hadoop fs -ls {{ sasep_conf_path_hdfs }}
+
+    - name: check config file (hdfs) of BDA SAS EP
+      raw: hadoop fs -cat {{ sasep_conf_path_hdfs }}/{{ sasep_conf_file }}
+
+

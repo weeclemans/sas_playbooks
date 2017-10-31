@@ -1,0 +1,12 @@
+---
+cdh_bin_path: "{{ cdh_path }}/bin"
+cdh_lib_path: "{{ cdh_path }}/lib"
+saslasrfd_bin_file: "saslasrfd"
+sas_jars: "sas.grid.provider.yarn.jar sas.lasr.hadoop.jar sas.lasr.jar"
+sas_version_file: "SAS_VERSION"
+hdatplugins_archive_path: "{{ sas_depot_path }}/standalone_installs/SAS_Plug-ins_for_Hadoop/1_0/Linux_for_x64"
+hdatplugins_archive_file: "hdatplugins.tar.gz"
+hdatplugins_folder: hdatplugins
+data_hps_hdfs_path: "/data/hps"
+hdfs_user: hdfs
+hdfs_group: sas

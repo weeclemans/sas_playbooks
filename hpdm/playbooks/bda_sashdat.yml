@@ -1,0 +1,63 @@
+---
+- hosts: cloudera-cluster
+  max_fail_percentage: 0
+  any_errors_fatal: true
+  vars_files:
+    - ../vars/main.yml
+    - ../vars/bda_sashdat.yml
+  tasks:
+
+    - name: check the path {{ cdh_path }}
+      stat: path="{{ cdh_path }}"
+      register: p
+      failed_when: p.stat.isdir == false
+
+    - name: remove old file ({{ saslasrfd_bin_file }})
+      file:
+        path: "{{ cdh_bin_path }}/{{ saslasrfd_bin_file }}"
+        state: absent
+
+    - name: remove old file ({{ sas_version_file }})
+      file:
+        path: "{{ cdh_path }}/{{ sas_version_file }}"
+        state: absent
+
+    - name: remove old sas jars ({{ sas_jars }})
+      shell: rm -vf {{ sas_jars }}
+      args:
+        chdir: "{{ cdh_lib_path }}"
+
+
+- hosts: node1
+  max_fail_percentage: 0
+  any_errors_fatal: true
+  vars_files:
+    - ../vars/main.yml
+    - ../vars/bda_sashdat.yml
+  tasks:
+
+    - name: extract {{ hdatplugins_archive_file }}
+      shell: |
+      
+        tar xvf {{ hdatplugins_archive_path }}/{{ hdatplugins_archive_file }} -C {{ cdh_path }} --strip-components=1 {{ hdatplugins_folder }}/{{ sas_version_file }}
+        tar xvf {{ hdatplugins_archive_path }}/{{ hdatplugins_archive_file }} -C {{ cdh_lib_path }} --strip-components=1 {{ hdatplugins_folder }}/sas.*.jar
+        tar xvf {{ hdatplugins_archive_path }}/{{ hdatplugins_archive_file }} -C {{ cdh_bin_path }} --strip-components=1 {{ hdatplugins_folder }}/{{ saslasrfd_bin_file }}
+        chown -v root:root {{ cdh_path }}/{{ sas_version_file }} {{ cdh_lib_path }}/sas.*.jar {{ cdh_bin_path }}/{{ saslasrfd_bin_file }}
+      args:
+        creates: "{{ cdh_bin_path }}/{{ saslasrfd_bin_file }}"
+
+    - name: create {{ data_hps_hdfs_path }} on hdfs 
+      shell: |
+
+        hadoop fs -test -d {{ data_hps_hdfs_path }} && exit
+        hadoop fs -mkdir {{ data_hps_hdfs_path }} &&
+        hadoop fs -chmod 0775 {{ data_hps_hdfs_path }} &&
+        hadoop fs -chown {{ hdfs_user }}:{{ hdfs_group }} {{ data_hps_hdfs_path }}
+
+
+
+
+
+
+
+

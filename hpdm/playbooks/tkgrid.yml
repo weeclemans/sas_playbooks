@@ -1,0 +1,281 @@
+---
+- hosts: cloudera-cluster
+  max_fail_percentage: 0
+  any_errors_fatal: true
+  vars_files:
+    - ../vars/main.yml
+    - ../vars/tkgrid.yml
+  tasks:
+    - name kill TKGrid processes
+      raw: ps auxwww | awk '/[/]TKGrid/ {print $2}' | xargs kill || true
+      register: p
+      filed_when: p.rc != 99
+
+    - name: remove tkgrid path on all nodes of cluster
+      file:
+        path: "{{ tkgrid_installation_path }}"
+        state: absent
+
+    - name: remove tkgrid path on all nodes of cluster
+      file:
+        path: "{{ tkgrid_rep_installation_path }}"
+        state: absent
+
+    - name: remove folders {{ hpae_path }}/hadoop hadoop/jars hadoop/sitexmls
+      file:
+        path: {{ hpae_path }}/hadoop
+        state: absent
+
+    - name: add JAVA_HOME variable to a file
+      become: yes
+      become_user: "{{ sas_user }}"
+      lineinfile:
+        dest: "~/{{ tkmpi_personal_file }}"
+        line: "export JAVA_HOME={{ java_home }}"
+        owner: "{{ sas_user }}"
+        mode: 0644
+
+    - name: create hpae path on cluster nodes
+      file:
+        path: "{{ hpae_path }}"
+        state: directory
+        owner: "{{ sas_user }}"
+        group: "{{ sas_groupname }}"
+        mode: 0755
+
+
+- hosts: node1
+  max_fail_percentage: 0
+  any_errors_fatal: true
+  vars_files:
+    - ../vars/main.yml
+    - ../vars/tkgrid.yml
+
+  tasks:
+    - name: purge old {{ grid_hosts_file }} file
+      file:
+        path: "{{ hpae_path }}/{{ grid_hosts_file }}"
+        state: absent
+
+    - name: purge folder {{ hadooptracer_installation_path }}
+      file:
+        path: "{{ hadooptracer_installation_path }}"
+        state: absent
+
+    - name: generate {{ grid_hosts_file }} file
+      raw: ( hdfs getconf -namenodes && hdfs dfsadmin -report | awk '/Hostname/ {print $2}' ) | awk '!a[$0]++' | su - {{ sas_user }} -c "tee {{ hpae_path }}/{{ grid_hosts_file }}"
+      register: p
+      failed_when: p.rc != 0
+
+    - name: check hadoop fs access
+      raw: hadoop fs -ls /
+      register: p
+      failed_when: p.rc != 0
+
+    - name: create dir off hdfs
+      raw: hadoop fs -test -d {{ sassrv_homedir_hdfs }} || (hadoop fs -mkdir {{ sassrv_homedir_hdfs }}; hadoop fs -chown {{ sas_user }}:{{ sas_groupname }} {{ sassrv_homedir_hdfs }}; hadoop fs -chmod 0755 {{ sassrv_homedir_hdfs }})
+      register: p
+      failed_when: p.rc != 0
+
+    - name: purge sticky-bit from /tmp hdfs
+      raw: hadoop fs -chmod -t /tmp
+      register: p
+      failed_when: p.rc != 0
+
+    - name: check hive access
+      raw: hive -e "set -v" | tail
+      register: p
+      failed_when: p.rc != 0
+
+    - name: create hadooptracer installation path
+      file:
+        path: "{{ hadooptracer_installation_path }}"
+        state: directory
+        owner: "{{ sas_user }}"
+        group: "{{ sas_groupname }}"
+        mode: 0755
+
+    - name: upload {{ hadooptracer_script }} file
+      copy:
+        src: ../files/{{ hadooptracer_script }}
+        dest: "{{ hadooptracer_installation_path }}"
+        owner: "{{ sas_user }}"
+        group: "{{ sas_groupname }}"
+        mode: 0755
+
+    - name: build Hadoop client JAR files and copy to Hadoop Hive node, copy sitexmls config files
+      become: yes
+      become_user: "{{ sas_user }}"
+      command: python {{ hadooptracer_installation_path }}/{{ hadooptracer_script }} --filterby=latest -b {{ hpai_cdh_path }}
+      args:
+        creates: "{{ hpai_cdh_jars_path }}"
+      register: p
+      failed_when: p.rc != 0
+
+    - name: copy jar files
+      command: cp "{{ parcels_cdh_jars_path }}/{{ httpcore_jar_new }}" "{{ parcels_cdh_jars_path }}/{{ httpclient_jar_new }}" "{{ hpai_cdh_jars_path }}"
+      args:
+        creates: "{{ hpai_cdh_jars_path }}/{{ httpcore_jar_new }}"
+
+    - name: change attr for {{ httpcore_jar_new }}
+      file:
+        path: "{{ hpai_cdh_jars_path }}/{{ httpcore_jar_new }}"
+        state: file
+        owner: "{{ sas_user }}"
+        group: "{{ sas_groupname }}"
+        mode: 0644
+
+    - name: change attr for {{ httpclient_jar_new }}
+      file: 
+        path: "{{ hpai_cdh_jars_path }}/{{ httpclient_jar_new }}"
+        state: file
+        owner: "{{ sas_user }}"
+        group: "{{ sas_groupname }}"
+        mode: 0644
+
+    - name: remove waste JAR files
+      raw: cd {{ hpai_cdh_jars_path }} && rm -f {{ waste_jar_files }} {{ httpclient_jar_old }} {{ httpcore_jar_old }}
+
+    - name: extract TKGrid dist-files
+      become: yes
+      become_user: "{{ sas_user }}"
+      shell: |
+        set timeout -1
+        spawn {{ tkgrid_distr_path }}/{{ tkgrid_archive }} --confirm --noexec --nox11
+
+        expect "About to extract"
+        send -- "Y\r"
+      
+        expect eof
+      args:
+        executable: /usr/bin/expect
+        chdir: "{{ hpae_path }}"    
+        creates: "{{ tkgrid_installation_path }}/{{ tkgrid_version_file }}"
+    - name: configure TKGrid and copy files to remote nodes
+      become: yes
+      become_user: "{{ sas_user }}"
+      shell: |
+
+        set timeout -1
+        spawn {{ tkgrid_installation_path }}/bin/{{ tkgrid_installation_script }}
+
+        expect "Shared install or replicate to each node"
+        send -- "n\r"
+
+        expect "Enter additional paths to include in LD_LIBRARY_PATH"
+        send -- "\n"
+
+        expect "Enter NFS mount to MAPR directory"
+        send -- "\n"
+
+        expect "Enter additional options to mpirun"
+        send -- "-genvlist `env | sed -e s/=.*/,/ | sed /KRB5CCNAME/d | tr -d '\\n'`TKPATH,LD_LIBRARY_PATH\n"
+
+        expect "Enter path to use for Utility files"
+        send -- "\n"
+
+        expect "Enter path to Hadoop"
+        send -- "{{ cdh_path }}\n"
+
+        expect "Force Root Rank to run on headnode"
+        send -- "y\n"
+
+        expect "Enter full path to machine list"
+        send "{{ hpae_path }}/{{ grid_hosts_file }}\n"
+
+        expect "Enter maximum runtime for grid jobs"
+        send -- "14400\n"
+
+        expect "Enter value for UMASK"
+        send -- "\n"
+
+        expect "Perform copy"
+        send -- "YES\n"
+      
+        expect eof
+      args:
+        executable: /usr/bin/expect
+        chdir: "{{ hpae_path }}"    
+        creates: "{{ tkgrid_installation_path }}/{{ grid_hosts_file }}"
+ 
+    - name: extract TKGrid_REP dist-files
+      become: yes
+      become_user: "{{ sas_user }}"
+      shell: |
+        set timeout -1
+        spawn {{ tkgrid_distr_path }}/{{ tkgrid_rep_archive }} --confirm --noexec --nox11
+
+        expect "About to extract"
+        send -- "Y\r"
+      
+        expect eof
+      args:
+        executable: /usr/bin/expect
+        chdir: "{{ hpae_path }}"    
+        creates: "{{ tkgrid_rep_installation_path }}/{{ tkgrid_version_file }}"
+
+    - name: configure TKGrid_REP and copy a files to remote nodes
+      become: yes
+      become_user: "{{ sas_user }}"
+      shell: |
+
+        set timeout -1
+        spawn {{ tkgrid_rep_installation_path }}/bin/{{ tkgrid_rep_installation_script }}
+
+        expect "Do you want to configure remote access to Teradata"
+        send -- "NO\n"
+
+        expect "Do you want to configure remote access to Greenplum"
+        send -- "NO\n"
+
+        expect "Do you want to configure remote access to Hadoop"
+        send -- "yes\n"
+
+        expect "Enter path of 64 bit JRE"
+        send -- "{{ java_home }}/jre\n"
+
+        expect "containing the Hadoop client jars"
+        send -- "{{ hpai_cdh_jars_path }}\n"
+
+        expect "Enter any JRE Options you need added for the Java invocation"
+        send -- "\n"
+
+        expect "Do you want to configure remote access to Oracle"
+        send -- "NO\n"
+
+        expect "Do you want to configure remote access to SAP HANA"
+        send -- "NO\n"
+
+        expect "Shared install or replicate to each node"
+        send -- "n\n"
+        
+        expect "Enter path to TKGrid install"
+        send -- "{{ tkgrid_installation_path }}\n"
+
+        expect "Enter additional paths to include in LD_LIBRARY_PATH"
+        send -- "\n"
+
+        expect "Perform copy"
+        send -- "YES\n"
+
+        expect eof
+      args:
+        executable: /usr/bin/expect
+        chdir: "{{ hpae_path }}"    
+        creates: "{{ tkgrid_rep_installation_path }}/{{ tkmpinodelib_script }}"
+
+    - name: ping nodes of cluster
+      become: yes
+      become_user: "{{ sas_user }}"
+      command: "{{ tkgrid_installation_path }}/bin/simsh hostname"
+      register: p
+      failed_when: "'Permission denied' in p.stdout"
+
+    - name: ping2 nodes of cluster
+      become: yes
+      become_user: "{{ sas_user }}"
+      command: "timeout 4 {{ mpirun_bin_fullpath }} -f {{ tkgrid_installation_path }}/{{ grid_hosts_file }} hostname"
+
+    - name: echo var
+      debug: msg="Done"
+

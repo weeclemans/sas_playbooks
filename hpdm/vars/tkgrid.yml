@@ -1,0 +1,28 @@
+---
+sassrv_homedir_hdfs: "/user/{{ sas_user }}"
+grid_hosts_file: "grid.hosts"
+tkgrid_distr_path: "{{ sas_depot_path}}/standalone_installs/SAS_High-Performance_Node_Installation/3_7/Linux_for_x64"
+tkgrid_installation_path: "{{ hpae_path }}/TKGrid"
+tkgrid_rep_installation_path: "{{ hpae_path }}/TKGrid_REP"
+tkgrid_archive: "TKGrid_Linux_x86_64.sh"
+tkgrid_rep_archive: "TKGrid_REP_x86_64.sh"
+tkgrid_installation_script: "InstallTKGrid_Linux_x86_64.sh"
+tkgrid_rep_installation_script: "InstallTKGrid_REP_x86_64.sh"
+tkgrid_version_file: "VERSION"
+
+hadooptracer_installation_path: "{{ hpae_path }}/hadooptracer"
+hadooptracer_script: "hadooptracer.py"
+hpai_cdh_path: "{{ hpae_path }}/hadoop"
+hpai_cdh_jars_path: "{{ hpai_cdh_path }}/jars"
+parcels_cdh_jars_path: /opt/cloudera/parcels/CDH/jars
+
+httpcore_jar_new: "httpcore-4.3.jar"
+httpcore_jar_old: "httpcore-4.2.5.jar"
+httpclient_jar_new: "httpclient-4.3.jar"
+httpclient_jar_old: "httpclient-4.2.5.jar"
+
+waste_jar_files: "derby*.jar spark-examples*.jar ranger-plugins-audit*.jar avatica*.jar hadoop-0.20.2-dev-core*.jar"
+
+tkmpinodelib_script: "tkmpinodelib.sh"
+mpirun_bin_fullpath: "{{ tkgrid_installation_path }}/mpich2-install/bin/mpirun"
+tkmpi_personal_file: ".tkmpi.personal"
